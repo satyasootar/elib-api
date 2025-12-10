@@ -1,5 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import createHttpError from "http-errors";
+import userModel from "./userModel.ts";
+import { createTypeReferenceDirectiveResolutionCache } from "typescript";
 
 const createUser = async (req: Request, res: Response, next: NextFunction) => {
   //Validation
@@ -10,8 +12,12 @@ const createUser = async (req: Request, res: Response, next: NextFunction) => {
     return next(httpError);
   }
 
-  //Logic
-
+  //Logic - DAtabase call
+  const user = await userModel.insertOne(req.body);
+  if (user) {
+    const error = createHttpError(400, "User already exist with this email");
+    return next(error)
+  }
   //response
   res.send("User created");
 };
