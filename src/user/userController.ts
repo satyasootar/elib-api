@@ -18,6 +18,12 @@ const createUser = async (req: Request, res: Response, next: NextFunction) => {
     const error = createHttpError(400, "User already exist with this email");
     return next(error)
   }
+  ///Store the user in the database
+  // Hash the password
+  
+
+
+
   //response
   res.send("User created");
 };
