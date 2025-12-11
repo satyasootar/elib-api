@@ -50,8 +50,44 @@ const createUser = async (req: Request, res: Response, next: NextFunction) => {
 
 
 const loginUser = async (req: Request, res: Response, next: NextFunction) =>{
+  //validation
+  const {email, password} = req.body;
+
+  if(!email || !password){
+    return next(createHttpError(401, "All fields are required"))
+  }
+
+
+  const userExist = await userModel.findOne({email})
+
+  if(!userExist){
+    const error = createHttpError(404,"User does't exist or email is incprrect")
+    return next(error)
+  }
+
+  let token:string ;
+  try {
+    let isMatch = await bcrypt.compare(password, userExist.password);
+
+    if(!isMatch){
+      return next(createHttpError(401, "Password does't match"))
+    }
+    token = jwt.sign({ sub: userExist._id }, config.jwtSecret as string, {
+    expiresIn: "7d",
+  });
+
+  } catch (error) {
+    return next(createHttpError(500, "Error while login user"))
+  }
+
+  res.status(201).json({
+    msg: "User logged in sucessfully",
+    accessToken: token,
+  });
 
 }
+
+
 
 export { createUser, loginUser };
  
