@@ -16,8 +16,8 @@ const createUser = async (req: Request, res: Response, next: NextFunction) => {
 
   //Logic - Database call
   try {
-    const user = userModel.find({ email });
-    if (!user) {
+    const user =await userModel.findOne({ email });
+    if (user) {
       const error = createHttpError(400, "User already exist with this email");
       return next(error);
     }
