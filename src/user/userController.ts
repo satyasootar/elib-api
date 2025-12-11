@@ -42,10 +42,16 @@ const createUser = async (req: Request, res: Response, next: NextFunction) => {
     return next(createHttpError(500, "Error while creating user"))
   }
 
-  res.json({
+  res.status(201).json({
     msg: "User created sucessfully",
     accessToken: token,
   });
 };
 
-export { createUser };
+
+const loginUser = async (req: Request, res: Response, next: NextFunction) =>{
+
+}
+
+export { createUser, loginUser };
+ 
