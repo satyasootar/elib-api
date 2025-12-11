@@ -1,8 +1,9 @@
 import type { NextFunction, Request, Response } from "express";
 import createHttpError from "http-errors";
 import userModel from "./userModel.ts";
-import bcrypt from 'bcrypt'
-
+import bcrypt from "bcrypt";
+import  jwt  from "jsonwebtoken";
+import { config } from "../config/config.ts";
 
 const createUser = async (req: Request, res: Response, next: NextFunction) => {
   //Validation
@@ -14,19 +15,31 @@ const createUser = async (req: Request, res: Response, next: NextFunction) => {
   }
 
   //Logic - DAtabase call
-  const user = await userModel.insertOne(req.body);
-  if (user) {
+  const user = userModel.findOne({}, { email: email });
+  if (!user) {
     const error = createHttpError(400, "User already exist with this email");
-    return next(error)
+    return next(error);
   }
   ///Store the user in the database
   // Hash the password
-  let hashedPassword = await bcrypt.hash(password, 10)
+  let hashedPassword = await bcrypt.hash(password, 10);
 
+  // Insert the user
+  const newUser = await userModel.insertOne({
+    name: name,
+    email: email,
+    password: hashedPassword,
+  });
 
+  const token = jwt.sign({ sub: newUser._id }, config.jwtSecret as string, {
+    expiresIn: "7d",
+  });
 
   //response
-  res.send("User created");
+  res.json({
+    msg: "User created sucessfully",
+    accessToken: token,
+  });
 };
 
-export default createUser;
+export default createUser; 
