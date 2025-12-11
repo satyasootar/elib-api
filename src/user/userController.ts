@@ -1,7 +1,8 @@
 import type { NextFunction, Request, Response } from "express";
 import createHttpError from "http-errors";
 import userModel from "./userModel.ts";
-import { createTypeReferenceDirectiveResolutionCache } from "typescript";
+import bcrypt from 'bcrypt'
+
 
 const createUser = async (req: Request, res: Response, next: NextFunction) => {
   //Validation
@@ -20,7 +21,7 @@ const createUser = async (req: Request, res: Response, next: NextFunction) => {
   }
   ///Store the user in the database
   // Hash the password
-  
+  let hashedPassword = await bcrypt.hash(password, 10)
 
 
 
