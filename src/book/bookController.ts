@@ -22,7 +22,7 @@ const __dirname = dirname(__filename);
  */
 const createBook = async (req: Request, res: Response, next: NextFunction) => {
   // Validate body + files early
-  const { title, genre } = req.body;
+  const { title, genre } = req.body;  
   const files = req.files as { [filename: string]: Express.Multer.File[] } | undefined;
 
   if (!title || !genre) {
@@ -110,7 +110,7 @@ const createBook = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const doc = {
         title,
-        author: "693adf9bd0f376cedbc61efd", // keep as-is or replace with real author
+        author: req.userId, // keep as-is or replace with real author
         genre,
         coverImage: uploadedCoverResult.secure_url,
         file: uploadedBookResult.secure_url,
