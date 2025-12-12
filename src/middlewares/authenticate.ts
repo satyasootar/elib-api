@@ -40,8 +40,6 @@ const authenticate = (req: Request, res: Response, next: NextFunction) => {
     const _req = req as AuthRequest;
     _req.userId = decoded.sub as string;
 
-    console.log("Authenticated User:", decoded.sub);
-
     // 6. Continue to next middleware
     next();
   } catch (error) {

@@ -1,9 +1,9 @@
 import type { NextFunction, Request, Response } from "express";
+import createHttpError from "http-errors";
 import cloudinary from "../config/cloudinary.ts";
 import path from "node:path";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import createHttpError from "http-errors";
 import bookModel from "./bookModel.ts";
 import fs from "node:fs";
 
@@ -22,7 +22,7 @@ const __dirname = dirname(__filename);
  */
 const createBook = async (req: Request, res: Response, next: NextFunction) => {
   // Validate body + files early
-  const { title, genre } = req.body;  
+  const { title, genre } = req.body;
   const files = req.files as { [filename: string]: Express.Multer.File[] } | undefined;
 
   if (!title || !genre) {
@@ -92,7 +92,6 @@ const createBook = async (req: Request, res: Response, next: NextFunction) => {
         format: "pdf",
       });
     } catch (err) {
-      // If book upload fails, try to remove cover already uploaded? (optional)
       // cleanup local temp files and return error
       await cleanupTempFiles();
       console.error("Cloudinary book upload error:", err);
@@ -110,7 +109,7 @@ const createBook = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const doc = {
         title,
-        author: req.userId, // keep as-is or replace with real author
+        author: (req as unknown as { userId?: string }).userId ?? "693adf9bd0f376cedbc61efd",
         genre,
         coverImage: uploadedCoverResult.secure_url,
         file: uploadedBookResult.secure_url,
@@ -155,4 +154,157 @@ const createBook = async (req: Request, res: Response, next: NextFunction) => {
   }
 };
 
-export { createBook };
+/**
+ * Update a book:
+ *  - validate request + authentication
+ *  - optionally upload new cover and/or book file
+ *  - update DB record
+ *  - cleanup temp files
+ */
+const updateBook = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { title, genre } = req.body;
+    const bookId = req.params.bookId;
+
+    if (!bookId) {
+      return next(createHttpError(400, "bookId is required in params"));
+    }
+
+    const files = (req.files || {}) as { [filename: string]: Express.Multer.File[] } | undefined;
+
+    // 1. Check if the book exists
+    let book;
+    try {
+      book = await bookModel.findOne({ _id: bookId });
+    } catch (err) {
+      console.error("DB findOne error:", err);
+      return next(createHttpError(500, "Failed to fetch book from database"));
+    }
+
+    if (!book) {
+      return next(createHttpError(404, "Book not found"));
+    }
+
+    // 2. Check if user is authenticated & authorized
+    const userId = (req as unknown as { userId?: string }).userId;
+    if (!userId) {
+      return next(createHttpError(401, "Unauthenticated"));
+    }
+
+    // Normalize author to string for comparison
+    const bookAuthorId = typeof book.author === "string" ? book.author : (book.author?._id ?? book.author)?.toString?.();
+
+    if (bookAuthorId !== userId) {
+      return next(createHttpError(403, "Unauthorized access"));
+    }
+
+    // Helpers for file paths and cleanup
+    const uploadedTempPaths: string[] = [];
+    const tryUnlink = async (p?: string) => {
+      if (!p) return;
+      try {
+        await fs.promises.unlink(p).catch(() => {});
+      } catch {
+        /* ignore */
+      }
+    };
+
+    // 3. Optionally upload new cover image
+    let coverImageUrl = "";
+    if (files?.coverImage && files.coverImage[0]) {
+      const fileName = files.coverImage[0].filename;
+      const coverMimeType = files.coverImage[0].mimetype.split("/").at(-1);
+      const filePath = path.resolve(__dirname, "../../public/data/uploads/", fileName);
+
+      // remember to cleanup this temp file later
+      uploadedTempPaths.push(filePath);
+
+      try {
+        const uploadCoverImage = await cloudinary.uploader.upload(filePath, {
+          filename_override: fileName,
+          folder: "book-covers",
+          format: coverMimeType,
+        });
+        coverImageUrl = uploadCoverImage.secure_url;
+      } catch (err) {
+        console.error("Cover upload error:", err);
+        // cleanup temp files we created for this request
+        await Promise.all(uploadedTempPaths.map(p => tryUnlink(p)));
+        return next(createHttpError(502, "Failed to upload cover image"));
+      }
+    }
+
+    // 4. Optionally upload new book file
+    let bookFileUrl = "";
+    if (files?.file && files.file[0]) {
+      const bookfile = files.file[0].filename;
+      const bookFilePath = path.resolve(__dirname, "../../public/data/uploads", bookfile);
+      const bookMineType = "pdf";
+
+      // remember to cleanup this temp file later
+      uploadedTempPaths.push(bookFilePath);
+
+      try {
+        const uploadBookFile = await cloudinary.uploader.upload(bookFilePath, {
+          filename_override: bookfile,
+          folder: "book-files",
+          resource_type: "raw",
+          format: bookMineType,
+        });
+        bookFileUrl = uploadBookFile.secure_url;
+      } catch (err) {
+        console.error("Book file upload error:", err);
+        await Promise.all(uploadedTempPaths.map(p => tryUnlink(p)));
+        return next(createHttpError(502, "Failed to upload book file"));
+      }
+    }
+
+    // 5. Update in the database
+    let updatedDoc;
+    try {
+      const updatePayload: any = {
+        title: title ?? book.title,
+        genre: genre ?? book.genre,
+        coverImage: coverImageUrl ? coverImageUrl : book.coverImage,
+        file: bookFileUrl ? bookFileUrl : book.file,
+      };
+
+      updatedDoc = await bookModel.findOneAndUpdate(
+        { _id: bookId },
+        updatePayload
+      );
+
+      if (!updatedDoc) {
+        // Depending on driver, findOneAndUpdate may return null or the previous doc.
+        // Adjust this check to your driver behavior.
+        console.error("Book update returned falsy result:", updatedDoc);
+        await Promise.all(uploadedTempPaths.map(p => tryUnlink(p)));
+        return next(createHttpError(500, "Failed to update book"));
+      }
+    } catch (err) {
+      console.error("Database update error:", err);
+      await Promise.all(uploadedTempPaths.map(p => tryUnlink(p)));
+      return next(createHttpError(500, "Error while updating book in database"));
+    }
+
+    // Cleanup temporary files (best-effort)
+    try {
+      await Promise.all(uploadedTempPaths.map(p => tryUnlink(p)));
+    } catch (err) {
+      console.warn("Failed to delete temporary files after update:", err);
+    }
+
+    // Respond with updated id (normalize shape depending on your DB driver)
+    const returnedId = updatedDoc?._id ?? updatedDoc?.value?._id ?? bookId;
+
+    return res.status(200).json({
+      message: "File updated successfully",
+      id: returnedId,
+    });
+  } catch (err) {
+    console.error("Unexpected error in updateBook:", err);
+    return next(createHttpError(500, "Unexpected error while updating the book"));
+  }
+};
+
+export { createBook, updateBook };
