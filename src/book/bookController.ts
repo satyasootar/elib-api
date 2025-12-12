@@ -23,14 +23,20 @@ const __dirname = dirname(__filename);
 const createBook = async (req: Request, res: Response, next: NextFunction) => {
   // Validate body + files early
   const { title, genre } = req.body;
-  const files = req.files as { [filename: string]: Express.Multer.File[] } | undefined;
+  const files = req.files as
+    | { [filename: string]: Express.Multer.File[] }
+    | undefined;
 
   if (!title || !genre) {
-    return next(createHttpError(400, "Missing required fields: title or genre"));
+    return next(
+      createHttpError(400, "Missing required fields: title or genre")
+    );
   }
 
   if (!files || !files.coverImage || !files.file) {
-    return next(createHttpError(400, "Missing uploaded files: coverImage and/or file"));
+    return next(
+      createHttpError(400, "Missing uploaded files: coverImage and/or file")
+    );
   }
 
   const coverFile = files.coverImage?.[0];
@@ -44,8 +50,16 @@ const createBook = async (req: Request, res: Response, next: NextFunction) => {
   const coverFilename = coverFile.filename;
   const bookFilename = bookFile.filename;
 
-  const coverFilePath = path.resolve(__dirname, "../../public/data/uploads", coverFilename);
-  const bookFilePath = path.resolve(__dirname, "../../public/data/uploads", bookFilename);
+  const coverFilePath = path.resolve(
+    __dirname,
+    "../../public/data/uploads",
+    coverFilename
+  );
+  const bookFilePath = path.resolve(
+    __dirname,
+    "../../public/data/uploads",
+    bookFilename
+  );
 
   // Helper to attempt deleting temp files (best-effort)
   const cleanupTempFiles = async () => {
@@ -80,7 +94,9 @@ const createBook = async (req: Request, res: Response, next: NextFunction) => {
       // Attempt cleanup then forward a helpful error
       await cleanupTempFiles();
       console.error("Cloudinary cover upload error:", err);
-      return next(createHttpError(502, "Failed to upload cover image to Cloudinary"));
+      return next(
+        createHttpError(502, "Failed to upload cover image to Cloudinary")
+      );
     }
 
     // Upload book file (raw resource_type)
@@ -95,21 +111,27 @@ const createBook = async (req: Request, res: Response, next: NextFunction) => {
       // cleanup local temp files and return error
       await cleanupTempFiles();
       console.error("Cloudinary book upload error:", err);
-      return next(createHttpError(502, "Failed to upload book file to Cloudinary"));
+      return next(
+        createHttpError(502, "Failed to upload book file to Cloudinary")
+      );
     }
 
     // Ensure we have secure URLs
     if (!uploadedCoverResult?.secure_url || !uploadedBookResult?.secure_url) {
       await cleanupTempFiles();
       console.error("Cloudinary did not return secure_url for uploads");
-      return next(createHttpError(502, "Cloudinary upload did not return a secure URL"));
+      return next(
+        createHttpError(502, "Cloudinary upload did not return a secure URL")
+      );
     }
 
     // Insert to database
     try {
       const doc = {
         title,
-        author: (req as unknown as { userId?: string }).userId ?? "693adf9bd0f376cedbc61efd",
+        author:
+          (req as unknown as { userId?: string }).userId ??
+          "693adf9bd0f376cedbc61efd",
         genre,
         coverImage: uploadedCoverResult.secure_url,
         file: uploadedBookResult.secure_url,
@@ -119,7 +141,10 @@ const createBook = async (req: Request, res: Response, next: NextFunction) => {
       // insertedBook may be the InsertOneResult; adjust based on your driver
       if (!insertedBook?.acknowledged && !insertedBook?._id) {
         // Defensive: if insert did not produce an id, treat as error
-        console.error("Database insert returned unexpected result:", insertedBook);
+        console.error(
+          "Database insert returned unexpected result:",
+          insertedBook
+        );
         await cleanupTempFiles();
         return next(createHttpError(500, "Failed to save book to database"));
       }
@@ -150,7 +175,9 @@ const createBook = async (req: Request, res: Response, next: NextFunction) => {
     console.error("Unexpected error in createBook:", err);
     // Attempt cleanup of temporary files before returning
     await cleanupTempFiles();
-    return next(createHttpError(500, "Unexpected error while uploading the files"));
+    return next(
+      createHttpError(500, "Unexpected error while uploading the files")
+    );
   }
 };
 
@@ -170,7 +197,9 @@ const updateBook = async (req: Request, res: Response, next: NextFunction) => {
       return next(createHttpError(400, "bookId is required in params"));
     }
 
-    const files = (req.files || {}) as { [filename: string]: Express.Multer.File[] } | undefined;
+    const files = (req.files || {}) as
+      | { [filename: string]: Express.Multer.File[] }
+      | undefined;
 
     // 1. Check if the book exists
     let book;
@@ -192,7 +221,10 @@ const updateBook = async (req: Request, res: Response, next: NextFunction) => {
     }
 
     // Normalize author to string for comparison
-    const bookAuthorId = typeof book.author === "string" ? book.author : (book.author?._id ?? book.author)?.toString?.();
+    const bookAuthorId =
+      typeof book.author === "string"
+        ? book.author
+        : (book.author?._id ?? book.author)?.toString?.();
 
     if (bookAuthorId !== userId) {
       return next(createHttpError(403, "Unauthorized access"));
@@ -214,7 +246,11 @@ const updateBook = async (req: Request, res: Response, next: NextFunction) => {
     if (files?.coverImage && files.coverImage[0]) {
       const fileName = files.coverImage[0].filename;
       const coverMimeType = files.coverImage[0].mimetype.split("/").at(-1);
-      const filePath = path.resolve(__dirname, "../../public/data/uploads/", fileName);
+      const filePath = path.resolve(
+        __dirname,
+        "../../public/data/uploads/",
+        fileName
+      );
 
       // remember to cleanup this temp file later
       uploadedTempPaths.push(filePath);
@@ -229,7 +265,7 @@ const updateBook = async (req: Request, res: Response, next: NextFunction) => {
       } catch (err) {
         console.error("Cover upload error:", err);
         // cleanup temp files we created for this request
-        await Promise.all(uploadedTempPaths.map(p => tryUnlink(p)));
+        await Promise.all(uploadedTempPaths.map((p) => tryUnlink(p)));
         return next(createHttpError(502, "Failed to upload cover image"));
       }
     }
@@ -238,7 +274,11 @@ const updateBook = async (req: Request, res: Response, next: NextFunction) => {
     let bookFileUrl = "";
     if (files?.file && files.file[0]) {
       const bookfile = files.file[0].filename;
-      const bookFilePath = path.resolve(__dirname, "../../public/data/uploads", bookfile);
+      const bookFilePath = path.resolve(
+        __dirname,
+        "../../public/data/uploads",
+        bookfile
+      );
       const bookMineType = "pdf";
 
       // remember to cleanup this temp file later
@@ -254,7 +294,7 @@ const updateBook = async (req: Request, res: Response, next: NextFunction) => {
         bookFileUrl = uploadBookFile.secure_url;
       } catch (err) {
         console.error("Book file upload error:", err);
-        await Promise.all(uploadedTempPaths.map(p => tryUnlink(p)));
+        await Promise.all(uploadedTempPaths.map((p) => tryUnlink(p)));
         return next(createHttpError(502, "Failed to upload book file"));
       }
     }
@@ -278,18 +318,20 @@ const updateBook = async (req: Request, res: Response, next: NextFunction) => {
         // Depending on driver, findOneAndUpdate may return null or the previous doc.
         // Adjust this check to your driver behavior.
         console.error("Book update returned falsy result:", updatedDoc);
-        await Promise.all(uploadedTempPaths.map(p => tryUnlink(p)));
+        await Promise.all(uploadedTempPaths.map((p) => tryUnlink(p)));
         return next(createHttpError(500, "Failed to update book"));
       }
     } catch (err) {
       console.error("Database update error:", err);
-      await Promise.all(uploadedTempPaths.map(p => tryUnlink(p)));
-      return next(createHttpError(500, "Error while updating book in database"));
+      await Promise.all(uploadedTempPaths.map((p) => tryUnlink(p)));
+      return next(
+        createHttpError(500, "Error while updating book in database")
+      );
     }
 
     // Cleanup temporary files (best-effort)
     try {
-      await Promise.all(uploadedTempPaths.map(p => tryUnlink(p)));
+      await Promise.all(uploadedTempPaths.map((p) => tryUnlink(p)));
     } catch (err) {
       console.warn("Failed to delete temporary files after update:", err);
     }
@@ -303,44 +345,86 @@ const updateBook = async (req: Request, res: Response, next: NextFunction) => {
     });
   } catch (err) {
     console.error("Unexpected error in updateBook:", err);
-    return next(createHttpError(500, "Unexpected error while updating the book"));
+    return next(
+      createHttpError(500, "Unexpected error while updating the book")
+    );
   }
 };
 
-
 const listBooks = async (req: Request, res: Response, next: NextFunction) => {
-
   try {
     let books = await bookModel.find();
 
     res.status(201).json({
-      message:"Books fetch sucessfully",
-      books
-    }) 
+      message: "Books fetch sucessfully",
+      books,
+    });
   } catch (error) {
-    return next(createHttpError(500, "Failed to fetch books"))
+    return next(createHttpError(500, "Failed to fetch books"));
   }
-}
+};
 
+const getsingleBook = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  const bookId = req.params.bookId;
 
-const getsingleBook = async (req: Request, res: Response, next: NextFunction) =>{
-  const bookId = req.params.bookId
-
-  if(!bookId){
-    return next(createHttpError(401, "Book id is invalid/not found"))
+  if (!bookId) {
+    return next(createHttpError(401, "Book id is invalid/not found"));
   }
   try {
-    let book = await bookModel.findOne({_id:bookId})
-    if(!book){
-      return next(createHttpError(401, "Book does not exist"))
+    let book = await bookModel.findOne({ _id: bookId });
+    if (!book) {
+      return next(createHttpError(401, "Book does not exist"));
     }
     res.json({
-      message:"Book fetched sucessfullly",
-      book
-    })
+      message: "Book fetched sucessfullly",
+      book,
+    });
   } catch (error) {
-    return next(createHttpError(401, "Error while fetching the book"))
+    return next(createHttpError(401, "Error while fetching the book"));
   }
-}
+};
 
-export { createBook, updateBook, listBooks, getsingleBook };
+const deleteBook = async (req: Request, res: Response, next: NextFunction) => {
+  let bookId = req.params.bookId;
+  let userId = req.userId;
+  let book;
+  try {
+    book = await bookModel.findOne({ _id: bookId });
+    if (!book) {
+      return next(createHttpError(401, "Book does not exist"));
+    }
+  } catch (error) {
+    return next(createHttpError(401, "Error while deleting the book"));
+  }
+
+  if (book.author.toString() !== userId) {
+    return next(createHttpError(401, "Unauthorized"));
+  }
+
+  try {
+    const coverfileSplits = book.coverImage.split("/")
+    const coverImagePublicId = coverfileSplits.at(-2)+ "/"+(coverfileSplits.at(-1).split(".").at(-2))
+
+    const bookfileSplits = book.file.split('/')
+
+    const bookFilePublicId = bookfileSplits.at(-2)+"/"+bookfileSplits.at(-1)
+
+    await cloudinary.uploader.destroy(coverImagePublicId)
+    await cloudinary.uploader.destroy(bookFilePublicId, {
+      resource_type:"raw"
+    })
+
+    await bookModel.deleteOne({ _id: bookId });
+  } catch (error) {
+    return next(createHttpError(401, "Error while deleting the book"));
+  }
+  res.status(204).json({
+    message: "Book deleted sucessfullly",
+  });
+};
+
+export { createBook, updateBook, listBooks, getsingleBook, deleteBook };
