@@ -307,4 +307,19 @@ const updateBook = async (req: Request, res: Response, next: NextFunction) => {
   }
 };
 
-export { createBook, updateBook };
+
+const listBooks = async (req: Request, res: Response, next: NextFunction) => {
+
+  try {
+    let books = await bookModel.find();
+
+    res.status(201).json({
+      message:"Books fetch sucessfully",
+      books
+    }) 
+  } catch (error) {
+    return next(createHttpError(500, "Failed to fetch books"))
+  }
+}
+
+export { createBook, updateBook, listBooks };
